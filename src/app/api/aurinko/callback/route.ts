@@ -30,14 +30,20 @@ export const GET = async (req: NextRequest) => {
 
   const db = await getDb(); // 👈 fixed usage
 
-  await db.account.upsert({
+  const existingAccount = await db.account.findFirst({
     where: {
-      id: token.accountId.toString(),
+      emailAddress: accountDetails.email,
+      userId: userId,
     },
-    update: {
-      accessToken: token.accessToken,
-    },
-    create: {
+  });
+
+  if (existingAccount) {
+    // Redirect to /mail?error=account_exists
+    return NextResponse.redirect(new URL("/mail?error=account_exists", req.url));
+  }
+
+  await db.account.create({
+    data: {
       id: token.accountId.toString(),
       userId,
       emailAddress: accountDetails.email,

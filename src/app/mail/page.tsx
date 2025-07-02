@@ -1,26 +1,52 @@
 "use client";
-import React, { useState, useEffect } from 'react'
-import { Menu, X } from 'lucide-react';
-import { useEmails } from '~/hooks/use-emai';
+import React, { useState, useEffect, Suspense } from 'react'
+import { Menu } from 'lucide-react';
 import { EmailView } from '~/components/EmailView';
 import { EmailList } from '~/components/EmailList';
 import { Sidebar } from '~/components/Sidebar';
 import { Header } from '~/components/Header';
+import { toast, Toaster } from "sonner";
+import { useSearchParams } from "next/navigation";
+import useThreads from '~/hooks/use-threads';
+import type { EmailMessage } from '~/type';
+
+// Separate component to handle search params
+function SearchParamsHandler() {
+  const searchParams = useSearchParams();
+  
+  useEffect(() => {
+    const error = searchParams.get("error");
+    if (error === "account_exists") {
+      toast.error("Account already exists");
+    }
+  }, [searchParams]);
+  
+  return null;
+}
 
 const Mail = () => {
-  const { emails, selectedEmail, selectedEmailId, selectEmail } = useEmails();
+  const { threads } = useThreads();
+  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showEmailView, setShowEmailView] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
+    setIsClient(true);
   }, []);
 
-  if (!mounted) return null;
+  // Find the selected email object from threads
+  const selectedEmail = React.useMemo(() => {
+    for (const thread of threads ?? []) {
+      for (const email of thread.emails) {
+        if (email.id === selectedEmailId) return email;
+      }
+    }
+    return null;
+  }, [threads, selectedEmailId]);
 
   const handleSelectEmail = (id: string) => {
-    selectEmail(id);
+    setSelectedEmailId(id);
     setShowEmailView(true);
   };
 
@@ -28,41 +54,61 @@ const Mail = () => {
     setShowEmailView(false);
   };
 
-  return (
-    <div className="h-screen flex flex-col bg-gray-50">
-    <Header />
-    
-    <div className="flex-1 flex overflow-hidden">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      
-      <div className={`flex-1 flex overflow-hidden ${sidebarOpen ? 'z-0' : 'z-10'} relative`}>
-        {/* Mobile menu button */}
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className="lg:hidden fixed top-20 left-4 z-30 p-2 bg-emerald-600 text-white rounded-lg shadow-lg"
-        >
-          <Menu size={20} />
-        </button>
-        
-        {/* Email List - Show on desktop always, on mobile/tablet only when email view is not active */}
-        <div className={`w-full lg:w-96 ${showEmailView ? 'hidden lg:block' : 'block'}`}>
-          <EmailList
-            emails={emails}
-            selectedEmail={selectedEmailId}
-            onSelectEmail={handleSelectEmail}
-          />
-        </div>
-        
-        {/* Email View - Show on desktop always, on mobile/tablet only when email is selected */}
-        <div className={`flex-1 ${showEmailView ? 'block' : 'hidden lg:block'}`}>
-          <EmailView
-            email={selectedEmail}
-            onBack={handleBackToList}
-          />
+  if (!isClient) {
+    return (
+      <div className="h-screen flex flex-col bg-gray-50">
+        <Header />
+        <div className="flex-1 flex overflow-hidden">
+          <div className="w-full lg:w-96">
+            <div className="bg-white border-r border-gray-200 overflow-y-auto h-full">
+              <div className="p-4 border-b border-gray-200">
+                <h2 className="text-xl font-semibold text-gray-800">Loading...</h2>
+              </div>
+            </div>
+          </div>
+          <div className="flex-1 bg-white flex items-center justify-center">
+            <div className="text-center">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Loading...</h3>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  </div>
+    );
+  }
+
+  return (
+    <>
+      <Toaster />
+      <Suspense fallback={null}>
+        <SearchParamsHandler />
+      </Suspense>
+      <div className="h-screen flex flex-col bg-gray-50">
+        <Header />
+        <div className="flex-1 flex overflow-hidden">
+          <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+          <div className={`flex-1 flex overflow-hidden ${sidebarOpen ? 'z-0' : 'z-10'} relative`}>
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden fixed top-20 left-4 z-30 p-2 bg-emerald-600 text-white rounded-lg shadow-lg"
+            >
+              <Menu size={20} />
+            </button>
+            <div className={`w-full lg:w-96 ${showEmailView ? 'hidden lg:block' : 'block'}`}>
+              <EmailList
+                selectedEmail={selectedEmailId}
+                onSelectEmail={handleSelectEmail}
+              />
+            </div>
+            <div className={`flex-1 ${showEmailView ? 'block' : 'hidden lg:block'}`}>
+              <EmailView
+                email={selectedEmail as Partial<EmailMessage> | null}
+                onBack={handleBackToList}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   )
 }
 

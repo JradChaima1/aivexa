@@ -46,6 +46,8 @@ export interface EmailMessage {
     nativeProperties: Record<string, string>;
     folderId?: string;
     omitted: Array<"threadId" | "body" | "attachments" | "recipients" | "internetHeaders">;
+    onBack?: () => void;
+
 }
 
 export interface EmailAddress {

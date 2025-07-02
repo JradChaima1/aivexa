@@ -1,21 +1,20 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, ArrowRight, Archive, Trash2, Star, Reply, Forward, MoreHorizontal } from 'lucide-react';
+import type { EmailMessage } from '~/type';
+import { format } from 'date-fns';
 
-interface EmailViewProps {
-  email: {
-    id: string;
-    sender: string;
-    subject: string;
-    content: string;
-    time: string;
-    date: string;
-    replyTo: string;
-    avatar: string;
-  } | null;
+export interface EmailViewProps {
+  email: Partial<EmailMessage> | null;
   onBack?: () => void;
 }
 
 export function EmailView({ email, onBack }: EmailViewProps) {
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   if (!email) {
     return (
       <div className="flex-1 bg-white flex items-center justify-center">
@@ -34,12 +33,8 @@ export function EmailView({ email, onBack }: EmailViewProps) {
 
   return (
     <div className="flex-1 bg-white flex flex-col justify-between">
-      {/* Header */}
       <div className="p-4 border-b border-gray-200 flex items-center justify-between">
         <div className="flex items-center gap-3 ">
-          {/* Back to inbox button - visible on all devices */}
-      
-          {/* Navigation buttons for desktop */}
           <div className="hidden lg:flex items-center gap-1 ml-2">
             <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Previous email">
               <ArrowLeft size={16} className="text-gray-600" />
@@ -74,31 +69,44 @@ export function EmailView({ email, onBack }: EmailViewProps) {
         </div>
       </div>
       
-      {/* Email Content */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-4 lg:p-6">
           <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-4 lg:p-6 rounded-lg mb-4 lg:mb-6">
             <h1 className="text-xl lg:text-2xl font-bold mb-2">{email.subject}</h1>
-            <p className="text-emerald-100 text-sm lg:text-base">{email.date}</p>
+            <p className="text-emerald-100 text-sm lg:text-base">
+              {isClient && email.sentAt ? new Date(email.sentAt).toLocaleString() : ''}
+            </p>
           </div>
           
           <div className="bg-white rounded-lg border border-gray-200 p-4 lg:p-6">
             <div className="flex items-center gap-3 lg:gap-4 mb-4 lg:mb-6">
               <div className="w-10 h-10 lg:w-12 lg:h-12 bg-emerald-500 rounded-full flex items-center justify-center text-white font-medium text-sm lg:text-base">
-                {email.avatar}
+                {(email.from?.name ? email.from.name[0] : email.from?.address ? email.from.address[0] : '?')}
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900 text-sm lg:text-base">{email.sender}</h3>
-                <p className="text-xs lg:text-sm text-gray-600">Reply-To: {email.replyTo}</p>
+                <h3 className="font-semibold text-gray-900 text-sm lg:text-base">{email.from?.name || email.from?.address || ''}</h3>
+                <p className="text-xs lg:text-sm text-gray-600">
+                  Reply-To: {email.replyTo && email.replyTo.length > 0 ? email.replyTo.map(rt => rt.address).join(', ') : 'N/A'}
+                </p>
               </div>
             </div>
             
             <div className="prose prose-gray max-w-none">
               <div className="whitespace-pre-wrap text-gray-800 leading-relaxed text-sm lg:text-base">
-                {email.content}
+                {/* Always show text if available */}
+                {email.bodySnippet && (
+                  <div>{email.bodySnippet}</div>
+                )}
+                {/* Show HTML if available */}
+                {email.body && (
+                  <div dangerouslySetInnerHTML={{ __html: email.body }} />
+                )}
+                {/* Show fallback if neither */}
+                {!email.bodySnippet && !email.body && (
+                  <span className="text-gray-400">(No content)</span>
+                )}
               </div>
             </div>
-            
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mt-6 lg:mt-8 pt-4 lg:pt-6 border-t border-gray-200">
               <button className="w-full sm:w-auto flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg transition-colors">
                 <Reply size={16} />
