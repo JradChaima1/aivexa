@@ -54,7 +54,7 @@ export const GET = async (req: NextRequest) => {
 
   waitUntil(
     axios
-      .post(`${process.env.NEXT_LOCAL_URL}/api/initial-sync`, {
+      .post(`${process.env.NEXT_PUBLIC_URL}/api/initial-sync`, {
         accountId: token.accountId.toString(),
         userId,
       })
