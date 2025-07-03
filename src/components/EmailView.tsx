@@ -1,21 +1,67 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, ArrowRight, Archive, Trash2, Star, Reply, Forward, MoreHorizontal } from 'lucide-react';
+import { ArrowLeft, Archive, Trash2, Star } from 'lucide-react';
 import type { EmailMessage } from '~/type';
 import { format } from 'date-fns';
+import { useLocalStorage } from 'usehooks-ts';
+import { sendReplyEmail } from '~/lib/send-reply';
+import useThreads from '~/hooks/use-threads';
 
 export interface EmailViewProps {
-  email: Partial<EmailMessage> | null;
+  thread: { emails: EmailMessage[] } | null;
+  selectedEmailId: string | null;
   onBack?: () => void;
 }
 
-export function EmailView({ email, onBack }: EmailViewProps) {
+export function EmailView({ thread, selectedEmailId, onBack }: EmailViewProps) {
   const [isClient, setIsClient] = useState(false);
+  const [showReply, setShowReply] = useState(false);
+  const [replyTo, setReplyTo] = useState('');
+  const [replySubject, setReplySubject] = useState('');
+  const [replyBody, setReplyBody] = useState('');
+  const [replySending, setReplySending] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
+  const [replySuccess, setReplySuccess] = useState(false);
+  const [accountId] = useLocalStorage('accountId', '');
+  const { refetch } = useThreads();
+
+  // Find the latest email in the thread (for reply prefill)
+  const latestEmail = thread?.emails?.[thread.emails.length - 1];
+  // Find the messageId for reply (use the selected email or latest email)
+  const replyMessageId = selectedEmailId
+    ? thread?.emails.find(e => e.id === selectedEmailId)?.id
+    : latestEmail?.id;
 
   useEffect(() => {
     setIsClient(true);
-  }, []);
+    if (latestEmail && latestEmail.from?.address) {
+      setReplyTo(latestEmail.from.address);
+    }
+    if (latestEmail && latestEmail.subject) {
+      setReplySubject(latestEmail.subject.startsWith('Re:') ? latestEmail.subject : `Re: ${latestEmail.subject}`);
+    }
+  }, [latestEmail]);
 
-  if (!email) {
+  const handleReplySend = async () => {
+    setReplyError(null);
+    setReplySuccess(false);
+    setReplySending(true);
+    try {
+      if (!replyMessageId) {
+        setReplyError('No message selected to reply to.');
+        setReplySending(false);
+        return;
+      }
+      await sendReplyEmail({ to: replyTo, subject: replySubject, body: replyBody, accountId, messageId: replyMessageId });
+      setReplySuccess(true);
+      setReplyBody('');
+    } catch (err: any) {
+      setReplyError(err.message || 'Failed to send reply');
+    } finally {
+      setReplySending(false);
+    }
+  };
+
+  if (!thread || !thread.emails || thread.emails.length === 0) {
     return (
       <div className="flex-1 bg-white flex items-center justify-center">
         <div className="text-center">
@@ -34,19 +80,8 @@ export function EmailView({ email, onBack }: EmailViewProps) {
   return (
     <div className="flex-1 bg-white flex flex-col justify-between">
       <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-        <div className="flex items-center gap-3 ">
-          <div className="hidden lg:flex items-center gap-1 ml-2">
-            <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Previous email">
-              <ArrowLeft size={16} className="text-gray-600" />
-            </button>
-            <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Next email">
-              <ArrowRight size={16} className="text-gray-600" />
-            </button>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-2">
-        {onBack && (
+        <div className="flex items-center gap-3">
+          {onBack && (
             <button 
               onClick={onBack}
               className="flex items-center px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
@@ -56,7 +91,8 @@ export function EmailView({ email, onBack }: EmailViewProps) {
               <span className="hidden sm:inline text-sm font-medium">Back to Inbox</span>
             </button>
           )}
-          
+        </div>
+        <div className="flex items-center gap-2">
           <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Archive">
             <Archive size={16} className="text-gray-600" />
           </button>
@@ -68,58 +104,107 @@ export function EmailView({ email, onBack }: EmailViewProps) {
           </button>
         </div>
       </div>
-      
-      <div className="flex-1 overflow-y-auto">
+
+      <div className="flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 100px)' }}>
         <div className="max-w-4xl mx-auto p-4 lg:p-6">
-          <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-4 lg:p-6 rounded-lg mb-4 lg:mb-6">
-            <h1 className="text-xl lg:text-2xl font-bold mb-2">{email.subject}</h1>
-            <p className="text-emerald-100 text-sm lg:text-base">
-              {isClient && email.sentAt ? new Date(email.sentAt).toLocaleString() : ''}
-            </p>
-          </div>
-          
-          <div className="bg-white rounded-lg border border-gray-200 p-4 lg:p-6">
-            <div className="flex items-center gap-3 lg:gap-4 mb-4 lg:mb-6">
-              <div className="w-10 h-10 lg:w-12 lg:h-12 bg-emerald-500 rounded-full flex items-center justify-center text-white font-medium text-sm lg:text-base">
-                {(email.from?.name ? email.from.name[0] : email.from?.address ? email.from.address[0] : '?')}
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900 text-sm lg:text-base">{email.from?.name || email.from?.address || ''}</h3>
-                <p className="text-xs lg:text-sm text-gray-600">
-                  Reply-To: {email.replyTo && email.replyTo.length > 0 ? email.replyTo.map(rt => rt.address).join(', ') : 'N/A'}
+          {/* Render all emails in the thread */}
+          {thread.emails.map((email, idx) => (
+            <div key={email.id} className={`mb-6 ${selectedEmailId === email.id ? 'ring-2 ring-emerald-400 rounded' : ''}`}>
+              <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-4 lg:p-6 rounded-t-lg">
+                <h1 className="text-xl lg:text-2xl font-bold mb-2">{email.subject}</h1>
+                <p className="text-emerald-100 text-sm lg:text-base">
+                  {isClient && email.sentAt ? new Date(email.sentAt).toLocaleString() : ''}
                 </p>
               </div>
-            </div>
-            
-            <div className="prose prose-gray max-w-none">
-              <div className="whitespace-pre-wrap text-gray-800 leading-relaxed text-sm lg:text-base">
-                {/* Always show text if available */}
-                {email.bodySnippet && (
-                  <div>{email.bodySnippet}</div>
-                )}
-                {/* Show HTML if available */}
-                {email.body && (
-                  <div dangerouslySetInnerHTML={{ __html: email.body }} />
-                )}
-                {/* Show fallback if neither */}
-                {!email.bodySnippet && !email.body && (
-                  <span className="text-gray-400">(No content)</span>
-                )}
+              <div className="bg-white rounded-b-lg border border-gray-200 p-4 lg:p-6">
+                <div className="flex items-center gap-3 lg:gap-4 mb-4 lg:mb-6">
+                  <div className="w-10 h-10 lg:w-12 lg:h-12 bg-emerald-500 rounded-full flex items-center justify-center text-white font-medium text-sm lg:text-base">
+                    {(email.from?.name ? email.from.name[0] : email.from?.address ? email.from.address[0] : '?')}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 text-sm lg:text-base">{email.from?.name || email.from?.address || ''}</h3>
+                    <p className="text-xs lg:text-sm text-gray-600">
+                      Reply-To: {email.replyTo && email.replyTo.length > 0 ? email.replyTo.map(rt => rt.address).join(', ') : 'N/A'}
+                    </p>
+                  </div>
+                </div>
+                <div className="whitespace-pre-wrap text-gray-800 leading-relaxed text-sm lg:text-base">
+                  {email.body ? (
+                    <iframe
+                      srcDoc={email.body}
+                      className="w-full h-[600px] border rounded"
+                      sandbox="allow-same-origin"
+                    />
+                  ) : email.bodySnippet ? (
+                    <div>{email.bodySnippet}</div>
+                  ) : (
+                    <span className="text-gray-400">(No content)</span>
+                  )}
+                </div>
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mt-6 lg:mt-8 pt-4 lg:pt-6 border-t border-gray-200">
-              <button className="w-full sm:w-auto flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg transition-colors">
-                <Reply size={16} />
+          ))}
+
+          {/* Reply Button and Form (show after the last email) */}
+          <div className="mt-6">
+            {!showReply ? (
+              <button
+                className="px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 font-semibold"
+                onClick={() => setShowReply(true)}
+              >
                 Reply
               </button>
-              <button className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg transition-colors">
-                <Forward size={16} />
-                Forward
-              </button>
-              <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors self-center sm:self-auto">
-                <MoreHorizontal size={16} className="text-gray-600" />
-              </button>
-            </div>
+            ) : (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mt-2">
+                <div className="mb-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">To</label>
+                  <input
+                    type="email"
+                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                    value={replyTo}
+                    onChange={e => setReplyTo(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="mb-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Subject</label>
+                  <input
+                    type="text"
+                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                    value={replySubject}
+                    onChange={e => setReplySubject(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="mb-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Message</label>
+                  <textarea
+                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm h-20"
+                    value={replyBody}
+                    onChange={e => setReplyBody(e.target.value)}
+                    required
+                  />
+                </div>
+                {replyError && <div className="text-red-500 mb-2 text-xs">{replyError}</div>}
+                {replySuccess && <div className="text-green-600 mb-2 text-xs">Reply sent!</div>}
+                <div className="flex gap-2 justify-end mt-2">
+                  <button
+                    className="px-3 py-1 rounded bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm"
+                    onClick={() => setShowReply(false)}
+                    disabled={replySending}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="px-3 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 font-semibold text-sm disabled:opacity-60"
+                    onClick={handleReplySend}
+                    disabled={replySending}
+                  >
+                    {replySending ? 'Sending...' : 'Send'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

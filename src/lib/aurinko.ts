@@ -66,3 +66,43 @@ export const getAccountDetails = async (accessToken : string) => {
          throw error;
     }
 }
+
+/**
+ * Send an email using the Aurinko API
+ * @param accessToken - The Aurinko account access token
+ * @param to - Array of recipient email addresses (strings)
+ * @param subject - Email subject
+ * @param body - Email body (HTML or plain text)
+ */
+export const sendAurinkoEmail = async (
+  accessToken: string,
+  to: string[],
+  subject: string,
+  body: string
+) => {
+  try {
+    const response = await axios.post(
+      'https://api.aurinko.io/v1/email/messages',
+      {
+        subject,
+        body,
+        to: to.map(address => ({ address }))
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      console.error('Error sending Aurinko email:', error.response?.data);
+      throw new Error(error.response?.data?.error || 'Failed to send email');
+    } else {
+      console.error('Unexpected error sending Aurinko email', error);
+      throw error;
+    }
+  }
+};

@@ -45,6 +45,26 @@ const Mail = () => {
     return null;
   }, [threads, selectedEmailId]);
 
+  // Find the selected thread object from threads
+  const selectedThread = React.useMemo(() => {
+    for (const thread of threads ?? []) {
+      if (thread.emails.some((email: any) => email.id === selectedEmailId)) {
+        // Convert Date fields to string for each email
+        return {
+          ...thread,
+          emails: thread.emails.map((email: any) => ({
+            ...email,
+            sentAt: typeof email.sentAt === 'string' ? email.sentAt : email.sentAt?.toISOString(),
+            receivedAt: typeof email.receivedAt === 'string' ? email.receivedAt : email.receivedAt?.toISOString(),
+            createdTime: typeof email.createdTime === 'string' ? email.createdTime : email.createdTime?.toISOString(),
+            lastModifiedTime: typeof email.lastModifiedTime === 'string' ? email.lastModifiedTime : email.lastModifiedTime?.toISOString(),
+          })),
+        };
+      }
+    }
+    return null;
+  }, [threads, selectedEmailId]);
+
   const handleSelectEmail = (id: string) => {
     setSelectedEmailId(id);
     setShowEmailView(true);
@@ -101,7 +121,8 @@ const Mail = () => {
             </div>
             <div className={`flex-1 ${showEmailView ? 'block' : 'hidden lg:block'}`}>
               <EmailView
-                email={selectedEmail as Partial<EmailMessage> | null}
+                thread={selectedThread}
+                selectedEmailId={selectedEmailId}
                 onBack={handleBackToList}
               />
             </div>

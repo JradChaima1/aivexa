@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Edit, 
   Inbox, 
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useLocalStorage } from 'usehooks-ts';
 import { api } from '~/trpc/react';
+import ComposeEmail from './ComposeEmail';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -48,6 +49,7 @@ const { data: sentThreads } = api.account.getNumThreads.useQuery({
     { icon: ShoppingBag, label: 'Shopping', count: 8, variant: tab === 'shopping' ? 'default' : 'ghost' },
     { icon: Gift, label: 'Promotions', count: 21, variant: tab === 'promotions' ? 'default' : 'ghost' },
   ];
+  const [showCompose, setShowCompose] = useState(false);
 
   return (
     <>
@@ -64,8 +66,10 @@ const { data: sentThreads } = api.account.getNumThreads.useQuery({
         ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         <div className="p-4">
-          <button className="w-full bg-emerald-900 bg-opacity-60 hover:bg-emerald-700 hover:bg-opacity-80 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2">
-            <Edit size={18} />
+          <button
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded mb-4 transition-colors"
+            onClick={() => setShowCompose(true)}
+          >
             Compose
           </button>
         </div>
@@ -94,6 +98,9 @@ const { data: sentThreads } = api.account.getNumThreads.useQuery({
           ))}
         </nav>
       </aside>
+      {showCompose && (
+        <ComposeEmail onClose={() => setShowCompose(false)} />
+      )}
     </>
   );
 }
