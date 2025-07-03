@@ -79,7 +79,10 @@ export const accountRouter = createTRPCRouter({
         equals: input.done
     }
   return await ctx.db.thread.findMany({
-    where: filter,
+    where: {
+      accountId: account.id,
+      ...filter
+    },
     include: {
         emails: {
             orderBy: {
