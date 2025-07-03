@@ -7,6 +7,7 @@ import type { EmailMessage, EmailAddress } from '~/type';
 import DOMPurify from 'dompurify';
 import { useAtom } from 'jotai';
 import { threadIdAtom } from '~/hooks/use-threads';
+import { useUser } from '@clerk/nextjs';
 
 interface EmailListProps {
   selectedEmail: string | null;
@@ -14,14 +15,39 @@ interface EmailListProps {
 }
 
 export function EmailList({ selectedEmail, onSelectEmail }: EmailListProps) {
-  const { threads } = useThreads()
+  const { threads, refetch, accountId, account } = useThreads();
   const [threadId, setThreadId] = useAtom(threadIdAtom);
   const [isClient, setIsClient] = useState(false);
+  const { user } = useUser();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Fix hydration issue by ensuring client-side rendering
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  const handleRefresh = async () => {
+    if (!accountId || !user?.id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/incremental-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, userId: user.id })
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to refresh emails');
+      }
+      await refetch();
+    } catch (err: any) {
+      setError(err.message || 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const groupedThreads = threads?.reduce((acc: Record<string, any[]>, thread: any) => {
     const email: EmailMessage | undefined = thread.emails[0];
@@ -45,12 +71,41 @@ export function EmailList({ selectedEmail, onSelectEmail }: EmailListProps) {
     );
   }
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <span className="text-gray-500">Refreshing emails...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full">
+        <span className="text-red-500 mb-2">{error}</span>
+        <button className="p-2 bg-emerald-500 text-white rounded" onClick={handleRefresh}>Retry</button>
+      </div>
+    );
+  }
+
+  if (!threads || Object.keys(groupedThreads ?? {}).length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full">
+        <span className="text-gray-500">No emails found.</span>
+        <button className="p-2 mt-2 bg-emerald-500 text-white rounded" onClick={handleRefresh}>Refresh</button>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white border-r border-gray-200 overflow-y-auto h-full">
       <div className="p-4 border-b border-gray-200">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-gray-800">Inbox</h2>
           <div className="flex items-center gap-2">
+            <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" onClick={handleRefresh}>
+              Refresh Emails
+            </button>
             <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
               <Archive size={16} className="text-gray-600" />
             </button>

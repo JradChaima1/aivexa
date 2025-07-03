@@ -17,7 +17,7 @@ export class Account {
                 Authorization: `Bearer ${this.token}`
             },
             params: {
-                daysWithin: 2,
+                daysWithin: 7,
                 bodyType: 'html'
             }
         })
@@ -27,19 +27,24 @@ export class Account {
         let params: Record<string, string> = {}
         if (deltaToken) params.deltaToken = deltaToken
         if (pageToken) params.pageToken = pageToken
-        const resposne = await axios.get<SyncUpdatedResponse>('https://api.aurinko.io/v1/email/sync/updated', {
+        const response = await axios.get<SyncUpdatedResponse>('https://api.aurinko.io/v1/email/sync/updated', {
             headers: {
                 Authorization: `Bearer ${this.token}`,
             }, 
             params
         });
-         return resposne.data;
+         return response.data;
     }
     async performInitialSync() {
         try {
             // start the sync process
             let syncResponse = await this.startSync()
-            while (!syncResponse.ready){
+            let retryCount = 0;
+            const maxRetries = 30; // e.g., 30 seconds max
+            while (!syncResponse.ready) {
+                if (retryCount++ >= maxRetries) {
+                    throw new Error('Sync did not become ready after maximum retries');
+                }
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 syncResponse = await this.startSync()
             }
@@ -56,10 +61,11 @@ export class Account {
                 updatedResponse = await this.getUpdatedEmails({ pageToken: updatedResponse.nextPageToken});
                 allEmails = allEmails.concat(updatedResponse.records)
                 if (updatedResponse.nextDeltaToken) {
-
                     storedDeltaToken = updatedResponse.nextDeltaToken
                 }
             }
+            // Log all email subjects and sentAt for debugging
+            console.log('Aurinko returned emails:', allEmails.map(e => ({ subject: e.subject, sentAt: e.sentAt })));
             console.log('initial sync completed, we have synced', allEmails.length, 'emails')
                // Store the latestDeltaToken for future incremental syncs
                return {
@@ -69,8 +75,10 @@ export class Account {
         } catch (error) {
             if (axios.isAxiosError(error)) {
                 console.error('Error during sync:', JSON.stringify(error.response?.data, null, 2));
+                throw new Error('Axios error during sync: ' + (error.response?.data?.message || error.message));
             } else {
                 console.error('Error during sync:', error);
+                throw error;
             }
         }
     }
