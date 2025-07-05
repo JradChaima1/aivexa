@@ -106,6 +106,35 @@ export const accountRouter = createTRPCRouter({
         lastMessageDate: 'desc'
     }
   })
- })
-    
+ }),
+ getThreadById: privateProcedure.input(z.object({
+    accountId: z.string(),
+    threadId: z.string(),
+ })).query(async({ ctx, input }) => {
+    const account = await authoriseAccountAccess(input.accountId, ctx.auth.userId);
+    const thread = await ctx.db.thread.findFirst({
+      where: {
+        accountId: account.id,
+        id: input.threadId,
+      },
+      include: {
+        emails: {
+          orderBy: {
+            sentAt: 'asc',
+          },
+          select: {
+            from: true,
+            body: true,
+            bodySnippet: true,
+            emailLabel: true,
+            subject: true,
+            sysLabels: true,
+            id: true,
+            sentAt: true,
+          },
+        },
+      },
+    });
+    return thread;
+ }),
 })
