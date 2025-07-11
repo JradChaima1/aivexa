@@ -15,7 +15,7 @@ function SearchParamsHandler() {
   const searchParams = useSearchParams();
   
   useEffect(() => {
-    const error = searchParams.get("error");
+    const error = searchParams?.get("error");
     if (error === "account_exists") {
       toast.error("Account already exists");
     }
@@ -49,10 +49,11 @@ const Mail = () => {
   const selectedThread = React.useMemo(() => {
     for (const thread of threads ?? []) {
       if (thread.emails.some((email: any) => email.id === selectedEmailId)) {
-        // Convert Date fields to string for each email
+        // Sort emails by sentAt ascending (oldest first, newest last)
+        const sortedEmails = [...thread.emails].sort((a: any, b: any) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
         return {
           ...thread,
-          emails: thread.emails.map((email: any) => ({
+          emails: sortedEmails.map((email: any) => ({
             ...email,
             sentAt: typeof email.sentAt === 'string' ? email.sentAt : email.sentAt?.toISOString(),
             receivedAt: typeof email.receivedAt === 'string' ? email.receivedAt : email.receivedAt?.toISOString(),
@@ -124,6 +125,7 @@ const Mail = () => {
                 thread={selectedThread}
                 selectedEmailId={selectedEmailId}
                 onBack={handleBackToList}
+               
               />
             </div>
           </div>

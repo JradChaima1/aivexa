@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Archive, Trash2, Star } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import type { EmailMessage } from '~/type';
-import { format } from 'date-fns';
 import { useLocalStorage } from 'usehooks-ts';
 import { sendReplyEmail } from '~/lib/send-reply';
 import useThreads from '~/hooks/use-threads';
+import { useUser } from '@clerk/nextjs';
 
 export interface EmailViewProps {
   thread: { emails: EmailMessage[] } | null;
@@ -23,10 +23,9 @@ export function EmailView({ thread, selectedEmailId, onBack }: EmailViewProps) {
   const [replySuccess, setReplySuccess] = useState(false);
   const [accountId] = useLocalStorage('accountId', '');
   const { refetch } = useThreads();
+  const { user } = useUser();
 
-  // Find the latest email in the thread (for reply prefill)
   const latestEmail = thread?.emails?.[thread.emails.length - 1];
-  // Find the messageId for reply (use the selected email or latest email)
   const replyMessageId = selectedEmailId
     ? thread?.emails.find(e => e.id === selectedEmailId)?.id
     : latestEmail?.id;
@@ -51,9 +50,38 @@ export function EmailView({ thread, selectedEmailId, onBack }: EmailViewProps) {
         setReplySending(false);
         return;
       }
-      await sendReplyEmail({ to: replyTo, subject: replySubject, body: replyBody, accountId, messageId: replyMessageId });
+      
+      await sendReplyEmail({ 
+        to: replyTo, 
+        subject: replySubject, 
+        body: replyBody, 
+        accountId, 
+        messageId: replyMessageId 
+      });
+      
+      if (accountId && user?.id) {
+        try {
+          const res = await fetch('/api/incremental-sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accountId, userId: user.id })
+          });
+          
+          if (res.ok) {
+            setTimeout(async () => {
+              await refetch();
+            }, 2000);
+          }
+        } catch (syncErr) {
+          console.error('Error during post-reply sync:', syncErr);
+          await refetch();
+        }
+      }
+      
       setReplySuccess(true);
       setReplyBody('');
+      setShowReply(false);
+      
     } catch (err: any) {
       setReplyError(err.message || 'Failed to send reply');
     } finally {
@@ -79,7 +107,7 @@ export function EmailView({ thread, selectedEmailId, onBack }: EmailViewProps) {
 
   return (
     <div className="flex-1 bg-white flex flex-col justify-between">
-      <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+      <div className="p-4 border-b border-gray-200 flex items-center">
         <div className="flex items-center gap-3">
           {onBack && (
             <button 
@@ -92,23 +120,17 @@ export function EmailView({ thread, selectedEmailId, onBack }: EmailViewProps) {
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Archive">
-            <Archive size={16} className="text-gray-600" />
-          </button>
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Delete">
-            <Trash2 size={16} className="text-gray-600" />
-          </button>
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Star">
-            <Star size={16} className="text-gray-600" />
-          </button>
-        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 100px)' }}>
         <div className="max-w-4xl mx-auto p-4 lg:p-6">
-          {/* Render all emails in the thread */}
-          {thread.emails.map((email, idx) => (
+          {replySuccess && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-green-800 text-sm">Reply sent successfully! Refreshing thread...</p>
+            </div>
+          )}
+          
+          {thread.emails.map((email) => (
             <div key={email.id} className={`mb-6 ${selectedEmailId === email.id ? 'ring-2 ring-emerald-400 rounded' : ''}`}>
               <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-4 lg:p-6 rounded-t-lg">
                 <h1 className="text-xl lg:text-2xl font-bold mb-2">{email.subject}</h1>
@@ -145,7 +167,6 @@ export function EmailView({ thread, selectedEmailId, onBack }: EmailViewProps) {
             </div>
           ))}
 
-          {/* Reply Button and Form (show after the last email) */}
           <div className="mt-6">
             {!showReply ? (
               <button
@@ -186,7 +207,6 @@ export function EmailView({ thread, selectedEmailId, onBack }: EmailViewProps) {
                   />
                 </div>
                 {replyError && <div className="text-red-500 mb-2 text-xs">{replyError}</div>}
-                {replySuccess && <div className="text-green-600 mb-2 text-xs">Reply sent!</div>}
                 <div className="flex gap-2 justify-end mt-2">
                   <button
                     className="px-3 py-1 rounded bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm"
